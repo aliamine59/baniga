@@ -1,67 +1,127 @@
-document.addEventListener('DOMContentLoaded', () => {
-	const source = 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8';
-	const video = document.querySelector('video');
+videojs.Hls.xhr.beforeRequest = function(options) {
+  /*
+   * Modifications to requests that will affect every player.
+   */
+  
+  let newUri = options.uri.includes('.ts') ? options.uri + "?q=testDePrueba": options.uri;
+  
+  return {
+    ...options,
+    uri : newUri
+  };
+};
 
-	const defaultOptions = {};
 
-	if (!Hls.isSupported()) {
-		video.src = source;
-		var player = new Plyr(video, defaultOptions);
-	} else {
-		// For more Hls.js options, see https://github.com/dailymotion/hls.js
-		const hls = new Hls();
-		hls.loadSource(source);
 
-		// From the m3u8 playlist, hls parses the manifest and returns
-                // all available video qualities. This is important, in this approach,
-    	        // we will have one source on the Plyr player.
-    	       hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+let player = videojs("my-video", {}, () => {
+console.log("Inicio")
+  
 
-	      	     // Transform available levels into an array of integers (height values).
-	      	    const availableQualities = hls.levels.map((l) => l.height)
-	      	availableQualities.unshift(0) //prepend 0 to quality array
-
-	      	    // Add new qualities to option
-		    defaultOptions.quality = {
-		    	default: 0, //Default - AUTO
-		        options: availableQualities,
-		        forced: true,        
-		        onChange: (e) => updateQuality(e),
-		    }
-		    // Add Auto Label 
-		    defaultOptions.i18n = {
-		    	qualityLabel: {
-		    		0: 'Auto',
-		    	},
-		    }
-
-		    hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
-	          var span = document.querySelector(".plyr__menu__container [data-plyr='quality'][value='0'] span")
-	          if (hls.autoLevelEnabled) {
-	            span.innerHTML = `AUTO (${hls.levels[data.level].height}p)`
-	          } else {
-	            span.innerHTML = `AUTO`
-	          }
-	        })
+  player.one("loadedmetadata", () => {
     
-             // Initialize new Plyr player with quality options
-		     var player = new Plyr(video, defaultOptions);
-         });	
+    let calidades = player
+      .tech({ IWillNotUseThisInPlugins: true })
+      .hls.representations();
 
-	hls.attachMedia(video);
-    	window.hls = hls;		 
+    crearBotonesCalidades({
+      class: "item",
+      calidades: calidades,
+      father: player.controlBar.el_
+    });
+    
+    player.play();
+    
+    // ---------------------------------------------- //
+
+    function crearBotonAutoCalidad(params) {
+      let button = document.createElement("div");
+
+      button.id = "auto";
+      button.innerText = `Auto`;
+
+      button.classList.add("selected");
+
+      if (params && params.class) button.classList.add(params.class);
+
+      button.addEventListener("click", () => {
+        removeSelected(params);
+        button.classList.add("selected");
+        calidades.map(calidad => calidad.enabled(true));
+      });
+      
+      return button;
     }
 
-    function updateQuality(newQuality) {
-      if (newQuality === 0) {
-        window.hls.currentLevel = -1; //Enable AUTO quality if option.value = 0
-      } else {
-        window.hls.levels.forEach((level, levelIndex) => {
-          if (level.height === newQuality) {
-            console.log("Found quality match with " + newQuality);
-            window.hls.currentLevel = levelIndex;
-          }
+    function crearBotonesCalidades(params) {
+      
+      let contentMenu = document.createElement('div');
+      let menu = document.createElement('div');
+      let icon = document.createElement('div');
+
+      let fullscreen = params.father.querySelector('.vjs-fullscreen-control');
+      contentMenu.appendChild(icon);      
+      contentMenu.appendChild(menu);
+      fullscreen.before(contentMenu);
+      
+      menu.classList.add('menu');
+      icon.classList.add('icon','vjs-icon-cog');
+      contentMenu.classList.add('contentMenu');
+      
+      let botonAuto = crearBotonAutoCalidad(params);
+     
+      menu.appendChild(botonAuto);
+
+      calidades.sort((a, b) => {
+        return a.height > b.height ? 1 : 0;
+      });
+
+      calidades.map(calidad => {
+        let button = document.createElement("div");
+
+        if (params && params.class) button.classList.add(params.class);
+
+        button.id = `${calidad.height}`;
+        button.innerText = calidad.height + "p";
+
+        button.addEventListener("click", () => {
+          resetCalidad(params);
+          button.classList.add("selected");
+          calidad.enabled(true);
         });
+
+        menu.appendChild(button);
+      });
+
+      setInterval(() => {
+        let auto = document.querySelector("#auto");
+        current = player
+          .tech({ IWillNotUseThisInPlugins: true })
+          .hls.selectPlaylist().attributes.RESOLUTION.height;
+        console.log(current);
+
+        document.querySelector("#auto").innerHTML = auto.classList.contains(
+          "selected"
+        )
+          ? `Auto <span class='current'>${current}p</span>`
+          : "Auto";
+      }, 1000);
+      
+
+    }
+
+    function removeSelected(params) {
+      document.querySelector("#auto").classList.remove("selected");
+      [...document.querySelectorAll(`.${params.class}`)].map(calidad => {
+        calidad.classList.remove("selected");
+      });
+    }
+
+    function resetCalidad(params) {
+      removeSelected(params);
+
+      for (let calidad of params.calidades) {
+        calidad.enabled(false);
       }
     }
+  });
 });
